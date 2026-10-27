@@ -1,0 +1,110 @@
+// ====================================================================
+// PT MENARA TERUS MAKMUR - ASTRA OTOPARTS GROUP
+// BACKEND PREVENTIVE MAINTENANCE (CMMS) SCHEMA
+// Modul: Auth, CM Tickets, PM 52-Minggu, TPM Kanban, Spare Parts
+// ====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. MANAJEMEN PENGGUNA & HAK AKSES
+model User {
+  id           Int      @id @default(autoincrement())
+  npk          String   @unique @db.VarChar(50)
+  username     String   @unique @db.VarChar(50)
+  displayName  String   @map("display_name") @db.VarChar(100)
+  role         String   @db.VarChar(50)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  dept         String?  @default("Maintenance") @db.VarChar(100)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("users")
+}
+
+// 2. PILAR 1: CORRECTIVE MAINTENANCE (CM) - WORK ORDER PERBAIKAN
+model CmTicket {
+  id                  Int       @id @default(autoincrement())
+  ticketNo            String    @unique @map("ticket_no") @db.VarChar(50)
+  machineId           String    @default("JINGDUAN-FORGING-630T") @map("machine_id") @db.VarChar(50)
+  problemTitle        String    @map("problem_title") @db.VarChar(200)
+  description         String?   @db.Text
+  reportedByNpk       String    @map("reported_by_npk") @db.VarChar(50)
+  reportedByName      String?   @map("reported_by_name") @db.VarChar(100)
+  reporterDept        String?   @default("Produksi Forging") @map("reporter_dept") @db.VarChar(100)
+  priority            String    @default("High") @db.VarChar(20) // 'Low', 'Medium', 'High', 'Urgent'
+  status              String    @default("waiting") @db.VarChar(30) // 'waiting', 'in_progress', 'resolved', 'closed'
+  assignedPic         String?   @map("assigned_pic") @db.VarChar(100)
+  source              String    @default("MANUAL") @db.VarChar(50) // 'MANUAL' atau 'AUTO_PREDICTIVE_ALERT'
+  mttrTargetMinutes   Int       @default(30) @map("mttr_target_minutes")
+  responseTimeMinutes Int?      @map("response_time_minutes")
+  actualMttrMinutes   Int?      @map("actual_mttr_minutes")
+  actionTaken         String?   @map("action_taken") @db.Text
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  resolvedAt          DateTime? @map("resolved_at") @db.Timestamptz
+
+  @@index([status, createdAt(sort: Desc)])
+  @@map("cm_tickets")
+}
+
+// 3. PILAR 2: PREVENTIVE MAINTENANCE (PM) - JADWAL KALENDER 52 MINGGU
+model PmSchedule {
+  id             Int       @id @default(autoincrement())
+  code           String    @unique @db.VarChar(50)
+  machineId      String    @default("JINGDUAN-FORGING-630T") @map("machine_id") @db.VarChar(50)
+  title          String    @db.VarChar(200)
+  cycle          String    @db.VarChar(50) // 'Mingguan', 'Bulanan', '3 Bulanan', 'Tahunan'
+  plannedWeek    Int       @map("planned_week")
+  plannedDate    DateTime  @map("planned_date") @db.Date
+  status         String    @default("PLANNED") @db.VarChar(30) // 'PLANNED', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE'
+  pic            String    @db.VarChar(100)
+  durationHours  Float     @default(2.0) @map("duration_hours")
+  scopeNotes     String?   @map("scope_notes") @db.Text
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([plannedWeek, status])
+  @@map("pm_schedules")
+}
+
+// 4. PILAR 3: TOTAL PRODUCTIVE MAINTENANCE (TPM) - KANBAN & OPERATOR CHECKLIST
+model TpmTask {
+  id             Int       @id @default(autoincrement())
+  taskNo         String    @unique @map("task_no") @db.VarChar(50)
+  machineId      String    @default("JINGDUAN-FORGING-630T") @map("machine_id") @db.VarChar(50)
+  itemCheck      String    @map("item_check") @db.VarChar(200)
+  standardMethod String    @map("standard_method") @db.VarChar(200)
+  frequency      String    @default("Harian") @db.VarChar(50)
+  status         String    @default("OPEN") @db.VarChar(30) // 'OPEN', 'DONE', 'ABNORMAL'
+  checkedBy      String?   @map("checked_by") @db.VarChar(100)
+  checkedAt      DateTime? @map("checked_at") @db.Timestamptz
+  notes          String?   @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("tpm_tasks")
+}
+
+// 5. MANAJEMEN SUKU CADANG (SPARE PARTS & LIFETIME TRACKING)
+model SparePart {
+  id               Int      @id @default(autoincrement())
+  partNo           String   @unique @map("part_no") @db.VarChar(100)
+  partName         String   @map("part_name") @db.VarChar(200)
+  machineId        String   @default("JINGDUAN-FORGING-630T") @map("machine_id") @db.VarChar(50)
+  category         String   @db.VarChar(100) // 'Bearing', 'Bushing', 'Hydraulic', 'Electrical'
+  stockQty         Int      @default(0) @map("stock_qty")
+  minStockQty      Int      @default(1) @map("min_stock_qty")
+  unit             String   @default("PCS") @db.VarChar(20)
+  rackLocation     String?  @map("rack_location") @db.VarChar(50)
+  runningHoursUsed Float    @default(0.0) @map("running_hours_used")
+  maxLifetimeHours Float    @default(4000.0) @map("max_lifetime_hours")
+  lastReplacedAt   DateTime? @map("last_replaced_at") @db.Timestamptz
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("spare_parts")
+}
